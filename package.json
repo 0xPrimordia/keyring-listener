@@ -1,0 +1,29 @@
+{
+  "name": "keyring-schedule-listener",
+  "version": "0.1.0",
+  "description": "Listens for ScheduleReviewTrigger contract events via Hashio JSON-RPC relay and posts schedule IDs to HCS inbound topics",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": ["hedera", "hcs", "schedule", "listener", "websocket"],
+  "license": "MIT",
+  "dependencies": {
+    "@hashgraph/sdk": "^2.52.0",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/ws": "^8.5.13",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0"
+  }
+}
