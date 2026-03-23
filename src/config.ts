@@ -93,7 +93,7 @@ export function loadConfig(): Config {
     logLevel: optionalEnv("LOG_LEVEL", "info"),
     wsReconnectBaseMs: parsePositiveInt(process.env.WS_RECONNECT_BASE_MS, 3000),
     wsReconnectMaxMs: parsePositiveInt(process.env.WS_RECONNECT_MAX_MS, 60000),
-    wsPingIntervalMs: parsePositiveInt(process.env.WS_PING_INTERVAL_MS, 0),
+    wsPingIntervalMs: parsePositiveInt(process.env.WS_PING_INTERVAL_MS, 20000),
     wsPongTimeoutMs: parsePositiveInt(process.env.WS_PONG_TIMEOUT_MS, 10000),
   };
 }
