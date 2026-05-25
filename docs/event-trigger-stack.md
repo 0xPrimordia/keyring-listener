@@ -150,8 +150,8 @@ The listener is a **Background Worker** (not a Web Service)—long-running proce
 | `LOG_LEVEL` | No | `debug`, `info`, `warn`, `error` (default: `info`) |
 | `WS_RECONNECT_BASE_MS` | No | Base delay for exponential backoff (default: 3000) |
 | `WS_RECONNECT_MAX_MS` | No | Max reconnect delay cap (default: 60000) |
-| `WS_PING_INTERVAL_MS` | No | Ping keepalive interval; 0 = disabled (default: 30000) |
-| `WS_PONG_TIMEOUT_MS` | No | Pong timeout before terminate (default: 10000) |
+| `WS_PING_INTERVAL_MS` | No | Ping keepalive interval; 0 = disabled (default: 18000) |
+| `WS_PONG_TIMEOUT_MS` | No | Pong timeout before terminate; 0 = disabled (default: 0) |
 | `RPC_RELAY_HTTP_URL` | No | HTTP URL for eth_getLogs backfill (default: Hgraph or derived from WS URL) |
 
 See `.env.example` and [docs/testnet-hardening.md](testnet-hardening.md) for WebSocket hardening.

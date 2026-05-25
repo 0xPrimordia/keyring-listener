@@ -95,21 +95,29 @@ class ScheduleListener implements Listener {
     });
   }
 
+  private sendPing(): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+
+    const pongTimeoutMs = this.config.wsPongTimeoutMs;
+    if (pongTimeoutMs > 0) {
+      this.clearPongTimeout();
+      this.pongTimeout = setTimeout(() => {
+        console.warn("Pong timeout, terminating connection");
+        this.ws?.terminate();
+      }, pongTimeoutMs);
+    }
+
+    this.ws.ping();
+  }
+
   private startPing(): void {
     this.stopPing();
     const interval = this.config.wsPingIntervalMs;
     if (interval <= 0) return;
 
-    this.pingInterval = setInterval(() => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.clearPongTimeout();
-        this.pongTimeout = setTimeout(() => {
-          console.warn("Pong timeout, terminating connection");
-          this.ws?.terminate();
-        }, this.config.wsPongTimeoutMs);
-        this.ws.ping();
-      }
-    }, interval);
+    console.log(`WebSocket keepalive: ping every ${interval}ms`);
+    this.sendPing();
+    this.pingInterval = setInterval(() => this.sendPing(), interval);
   }
 
   private stopPing(): void {

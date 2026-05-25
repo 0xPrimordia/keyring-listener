@@ -71,8 +71,8 @@ Expose via env for tuning without code changes:
 |-----|---------|-------------|
 | `WS_RECONNECT_BASE_MS` | 3000 | Base delay for exponential backoff |
 | `WS_RECONNECT_MAX_MS` | 60000 | Max delay cap |
-| `WS_PING_INTERVAL_MS` | 30000 | Ping interval (0 = disabled) |
-| `WS_PONG_TIMEOUT_MS` | 10000 | Time to wait for pong before terminate |
+| `WS_PING_INTERVAL_MS` | 18000 | Ping interval (0 = disabled) |
+| `WS_PONG_TIMEOUT_MS` | 0 | Time to wait for pong before terminate (0 = disabled) |
 
 ## Implementation Summary
 

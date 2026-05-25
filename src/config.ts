@@ -28,9 +28,9 @@ export interface Config {
   wsReconnectBaseMs: number;
   /** Max delay (ms) cap for backoff. Default 60000. */
   wsReconnectMaxMs: number;
-  /** Ping interval (ms); 0 = disabled. Default 0 (Hashio may not respond to pings). */
+  /** Ping interval (ms); 0 = disabled. Default 18000 (Hgraph idle timeout). */
   wsPingIntervalMs: number;
-  /** Pong timeout (ms) before terminating. Default 10000. */
+  /** Pong timeout (ms) before terminating; 0 = disabled. Default 0. */
   wsPongTimeoutMs: number;
 }
 
@@ -93,7 +93,7 @@ export function loadConfig(): Config {
     logLevel: optionalEnv("LOG_LEVEL", "info"),
     wsReconnectBaseMs: parsePositiveInt(process.env.WS_RECONNECT_BASE_MS, 3000),
     wsReconnectMaxMs: parsePositiveInt(process.env.WS_RECONNECT_MAX_MS, 60000),
-    wsPingIntervalMs: parsePositiveInt(process.env.WS_PING_INTERVAL_MS, 20000),
-    wsPongTimeoutMs: parsePositiveInt(process.env.WS_PONG_TIMEOUT_MS, 10000),
+    wsPingIntervalMs: parsePositiveInt(process.env.WS_PING_INTERVAL_MS, 18000),
+    wsPongTimeoutMs: parsePositiveInt(process.env.WS_PONG_TIMEOUT_MS, 0),
   };
 }
