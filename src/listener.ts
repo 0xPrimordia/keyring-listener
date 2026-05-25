@@ -13,6 +13,8 @@ import type { Config } from "./config.js";
 import WebSocket from "ws";
 
 const REVIEW_TRIGGERED_ABI = ["string", "string", "string"];
+const SUBSCRIBE_REQUEST_ID = 1;
+const KEEPALIVE_ID_START = 1000;
 
 /** Parse ECDSA hex or DER private key; matches createAgentAccounts key format. */
 function parsePrivateKey(keyStr: string): PrivateKey {
@@ -40,10 +42,11 @@ class ScheduleListener implements Listener {
   private ws: WebSocket | null = null;
   private subscriptionId: string | null = null;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-  private pingInterval: ReturnType<typeof setInterval> | null = null;
-  private pongTimeout: ReturnType<typeof setTimeout> | null = null;
+  private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
+  private keepaliveRequestId = KEEPALIVE_ID_START;
   private reconnectAttempt = 0;
-  private lastProcessedBlock: string | null = null;
+  /** Latest block seen via events or keepalive; used for reconnect backfill. */
+  private lastKnownBlock: string | null = null;
   private hederaClient: Client | null = null;
 
   constructor(config: Config) {
@@ -73,15 +76,11 @@ class ScheduleListener implements Listener {
       console.log("WebSocket connected");
       this.reconnectAttempt = 0;
       this.subscribe(scheduleReviewTriggerContractAddress);
-      this.startPing();
+      this.startKeepalive();
     });
 
     this.ws.on("message", (data: Buffer) => {
       this.handleMessage(data.toString());
-    });
-
-    this.ws.on("pong", () => {
-      this.clearPongTimeout();
     });
 
     this.ws.on("close", (code, reason) => {
@@ -95,48 +94,49 @@ class ScheduleListener implements Listener {
     });
   }
 
-  private sendPing(): void {
+  /** JSON-RPC keepalive: relay closes idle connections after ~5 min (4002). */
+  private sendKeepalive(): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
 
-    const pongTimeoutMs = this.config.wsPongTimeoutMs;
-    if (pongTimeoutMs > 0) {
-      this.clearPongTimeout();
-      this.pongTimeout = setTimeout(() => {
-        console.warn("Pong timeout, terminating connection");
-        this.ws?.terminate();
-      }, pongTimeoutMs);
-    }
-
-    this.ws.ping();
+    const id = this.keepaliveRequestId++;
+    this.ws.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id,
+        method: "eth_blockNumber",
+        params: [],
+      })
+    );
   }
 
-  private startPing(): void {
-    this.stopPing();
+  private startKeepalive(): void {
+    this.stopKeepalive();
     const interval = this.config.wsPingIntervalMs;
     if (interval <= 0) return;
 
-    console.log(`WebSocket keepalive: ping every ${interval}ms`);
-    this.sendPing();
-    this.pingInterval = setInterval(() => this.sendPing(), interval);
+    console.log(`WebSocket keepalive: eth_blockNumber every ${interval}ms`);
+    this.sendKeepalive();
+    this.keepaliveInterval = setInterval(() => this.sendKeepalive(), interval);
   }
 
-  private stopPing(): void {
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
+  private stopKeepalive(): void {
+    if (this.keepaliveInterval) {
+      clearInterval(this.keepaliveInterval);
+      this.keepaliveInterval = null;
     }
-    this.clearPongTimeout();
   }
 
-  private clearPongTimeout(): void {
-    if (this.pongTimeout) {
-      clearTimeout(this.pongTimeout);
-      this.pongTimeout = null;
+  private updateLastKnownBlock(blockNumber: string): void {
+    const block = blockNumber.startsWith("0x")
+      ? String(BigInt(blockNumber))
+      : blockNumber;
+    if (!this.lastKnownBlock || BigInt(block) > BigInt(this.lastKnownBlock)) {
+      this.lastKnownBlock = block;
     }
   }
 
   private cleanup(): void {
-    this.stopPing();
+    this.stopKeepalive();
     if (this.ws) {
       this.ws.removeAllListeners();
       this.ws = null;
@@ -148,23 +148,24 @@ class ScheduleListener implements Listener {
     httpUrl: string,
     contractAddress: string
   ): Promise<void> {
-    if (!this.lastProcessedBlock) {
+    if (!this.lastKnownBlock) {
+      console.log("Backfill skipped: no last known block yet (first connection)");
       return;
     }
 
-    console.log(`Running backfill from block ${this.lastProcessedBlock}...`);
+    console.log(`Running backfill from block ${this.lastKnownBlock}...`);
 
     const addr = contractAddress.startsWith("0x")
       ? contractAddress
       : `0x${contractAddress}`;
-    const next = BigInt(this.lastProcessedBlock) + 1n;
+    const next = BigInt(this.lastKnownBlock) + 1n;
     const fromBlock = `0x${next.toString(16)}`;
 
     const logs = await this.ethGetLogs(httpUrl, addr, fromBlock, "latest");
     console.log(
       logs.length > 0
-        ? `Backfilling ${logs.length} missed event(s) from block ${this.lastProcessedBlock}`
-        : `Backfill complete: 0 missed events (from block ${this.lastProcessedBlock})`
+        ? `Backfilling ${logs.length} missed event(s) from block ${this.lastKnownBlock}`
+        : `Backfill complete: 0 missed events (from block ${this.lastKnownBlock})`
     );
 
     for (const log of logs) {
@@ -201,11 +202,6 @@ class ScheduleListener implements Listener {
     }
   }
 
-  private async ethBlockNumber(url: string): Promise<bigint | null> {
-    const hex = await this.ethRpc<string>(url, "eth_blockNumber", []);
-    return hex ? BigInt(hex) : null;
-  }
-
   private async ethGetLogs(
     url: string,
     address: string,
@@ -232,7 +228,7 @@ class ScheduleListener implements Listener {
 
     const msg = {
       jsonrpc: "2.0",
-      id: 1,
+      id: SUBSCRIBE_REQUEST_ID,
       method: "eth_subscribe",
       params,
     };
@@ -249,14 +245,23 @@ class ScheduleListener implements Listener {
         result?: string;
       };
 
-      if (msg.result && typeof msg.result === "string") {
+      if (
+        typeof msg.id === "number" &&
+        msg.id >= KEEPALIVE_ID_START &&
+        typeof msg.result === "string"
+      ) {
+        this.updateLastKnownBlock(msg.result);
+        return;
+      }
+
+      if (msg.id === SUBSCRIBE_REQUEST_ID && typeof msg.result === "string") {
         this.subscriptionId = msg.result;
         console.log("Subscribed, subscription ID:", this.subscriptionId);
         return;
       }
 
       if (msg.method === "eth_subscription" && msg.params?.result) {
-        this.handleLog(msg.params.result as LogResult);
+        void this.handleLog(msg.params.result as LogResult);
       }
     } catch (err) {
       console.error("Failed to parse message:", err);
@@ -285,9 +290,13 @@ class ScheduleListener implements Listener {
     }
 
     if (log.blockNumber) {
-      this.lastProcessedBlock = typeof log.blockNumber === "string"
-        ? (log.blockNumber.startsWith("0x") ? String(BigInt(log.blockNumber)) : log.blockNumber)
-        : String(log.blockNumber);
+      const block =
+        typeof log.blockNumber === "string"
+          ? log.blockNumber.startsWith("0x")
+            ? String(BigInt(log.blockNumber))
+            : log.blockNumber
+          : String(log.blockNumber);
+      this.updateLastKnownBlock(block);
     }
 
     console.log(`ReviewTriggered: scheduleId=${scheduleId}, topicIds=[${topicIds.join(", ")}]`);

@@ -150,15 +150,15 @@ The listener is a **Background Worker** (not a Web Service)—long-running proce
 | `LOG_LEVEL` | No | `debug`, `info`, `warn`, `error` (default: `info`) |
 | `WS_RECONNECT_BASE_MS` | No | Base delay for exponential backoff (default: 3000) |
 | `WS_RECONNECT_MAX_MS` | No | Max reconnect delay cap (default: 60000) |
-| `WS_PING_INTERVAL_MS` | No | Ping keepalive interval; 0 = disabled (default: 18000) |
-| `WS_PONG_TIMEOUT_MS` | No | Pong timeout before terminate; 0 = disabled (default: 0) |
+| `WS_PING_INTERVAL_MS` | No | JSON-RPC keepalive interval (`eth_blockNumber`); 0 = disabled (default: 60000) |
+| `WS_PONG_TIMEOUT_MS` | No | Unused (default: 0) |
 | `RPC_RELAY_HTTP_URL` | No | HTTP URL for eth_getLogs backfill (default: Hgraph or derived from WS URL) |
 
 See `.env.example` and [docs/testnet-hardening.md](testnet-hardening.md) for WebSocket hardening.
 
 ### Event backfill on reconnect
 
-When the WebSocket disconnects, events during the outage are missed. On reconnect, the listener calls `eth_getLogs` over HTTP to backfill missed events from `lastProcessedBlock + 1` to `latest`, then resubscribes. Backfill runs only on reconnect—not on startup—so events that occurred before the listener started are ignored.
+When the WebSocket disconnects, events during the outage are missed. On reconnect, the listener calls `eth_getLogs` over HTTP to backfill missed events from `lastKnownBlock + 1` to `latest`, then resubscribes. `lastKnownBlock` is updated from contract events and from `eth_blockNumber` keepalive responses, so backfill works even if no events have been processed yet. Backfill is skipped on the very first connection (no baseline block yet).
 
 ## ScheduleReviewTrigger Contract
 

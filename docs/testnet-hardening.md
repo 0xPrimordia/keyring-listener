@@ -19,18 +19,18 @@ Research and recommendations for hardening the listener against Hashio testnet i
 
 Reset `attempt` to 0 on successful connection + successful resubscribe.
 
-## 2. Ping/Pong Keepalive
+## 2. JSON-RPC Keepalive
 
-**Problem:** Idle connections get closed (1006) when no events flow; Hashio may have idle timeouts.
+**Problem:** Hgraph/Hiero relay closes idle WebSocket connections after ~5 minutes with code `4002 Connection timeout expired`. WebSocket protocol `ping()` frames do **not** reset the relay's inactivity timer — only JSON-RPC traffic does.
 
-**Solution:** Client sends WebSocket ping frames periodically. The `ws` library supports `ws.ping()`. Server responds with pong; if no pong, connection is dead.
+**Solution:** Send `eth_blockNumber` over the open WebSocket every 60s (well under the 5 min TTL). Responses also track the latest block for reconnect backfill.
 
 | Parameter | Value | Rationale |
 |-----------|-------|-----------|
-| Ping interval | 30 s | Balance between traffic and detection |
-| Pong timeout | 10 s | If no pong, terminate and reconnect |
+| Keepalive interval | 60 s | Safely under 300 s relay inactivity TTL |
+| Method | `eth_blockNumber` | Lightweight; resets activity + tracks block height |
 
-**Note:** Hashio may or may not respond to pings. If it doesn't, we'll get a close; reconnection handles it. Worth trying.
+**Note:** Hashio may behave differently. WebSocket `ping()` is not used.
 
 ## 3. Connection State Cleanup
 
@@ -71,12 +71,12 @@ Expose via env for tuning without code changes:
 |-----|---------|-------------|
 | `WS_RECONNECT_BASE_MS` | 3000 | Base delay for exponential backoff |
 | `WS_RECONNECT_MAX_MS` | 60000 | Max delay cap |
-| `WS_PING_INTERVAL_MS` | 18000 | Ping interval (0 = disabled) |
-| `WS_PONG_TIMEOUT_MS` | 0 | Time to wait for pong before terminate (0 = disabled) |
+| `WS_PING_INTERVAL_MS` | 60000 | JSON-RPC keepalive interval (0 = disabled) |
+| `WS_PONG_TIMEOUT_MS` | 0 | Unused (kept for compatibility) |
 
 ## Implementation Summary
 
 1. **Exponential backoff + jitter** in `scheduleReconnect()`
-2. **Ping/pong keepalive** via `setInterval` when connected; terminate if no pong
+2. **JSON-RPC keepalive** via `eth_blockNumber` on the WebSocket when connected
 3. **Cleanup** on close: remove listeners, clear ping interval, null ws
 4. **Config** for base/max delay, ping interval (optional)
